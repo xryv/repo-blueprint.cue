@@ -1,5 +1,3 @@
-// generate.cue — map output paths to rendered strings
-
 package repo
 
 files: {
