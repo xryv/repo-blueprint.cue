@@ -1,0 +1,52 @@
+name: CI (Blueprint Validate)
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Install CUE in CI only (no local install needed)
+      - name: Install CUE (via Go toolchain)
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+      - run: go install cuelang.org/go/cmd/cue@latest
+      - run: echo "$HOME/go/bin" >> $GITHUB_PATH
+
+      # Type-check the blueprint
+      - name: Type-check blueprint
+        run: cue vet blueprint.cue schema.cue
+
+      # Export the files map to a temp JSON
+      - name: Export files map
+        run: cue export generate.cue -e files -o files.json
+
+      # Compare with repo (drift check): rebuild from files.json and diff
+      - name: Rebuild outputs and check drift
+        run: |
+          set -e
+          python3 - << 'PY'
+          import json, os, pathlib, sys
+          data = json.load(open('files.json','r',encoding='utf-8'))
+          for path, content in data.items():
+              d = os.path.dirname(path)
+              if d and d != '.': pathlib.Path(d).mkdir(parents=True, exist_ok=True)
+              # write to a temp shadow dir to compare
+              shadow = pathlib.Path('.blueprint_shadow') / path
+              shadow.parent.mkdir(parents=True, exist_ok=True)
+              shadow.write_text(content or '', encoding='utf-8')
+          PY
+          # show diff (non-destructive); fail on diff
+          if ! diff -ru .blueprint_shadow . | grep -E "^(Only in \.blueprint_shadow|diff -ru \.blueprint_shadow)" -q; then
+            echo "✅ No drift detected."
+          else
+            echo "❌ Drift detected between generated outputs and committed files."
+            echo "   Run gen.ps1 or gen.sh (in CI/Codespaces) and commit the updates."
+            exit 1
+          fi

@@ -1,0 +1,63 @@
+name: Blueprint Sync (Auto PR)
+
+on:
+  push:
+    branches: [main, master]
+    paths:
+      - "blueprint.cue"
+      - "schema.cue"
+      - "generate.cue"
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+      - run: go install cuelang.org/go/cmd/cue@latest
+      - run: echo "$HOME/go/bin" >> $GITHUB_PATH
+
+      - name: Validate + export
+        run: |
+          cue vet blueprint.cue schema.cue
+          cue export generate.cue -e files -o files.json
+
+      - name: Apply regenerated files
+        run: |
+          python3 - << 'PY'
+          import json, os, pathlib, sys
+          data = json.load(open('files.json','r',encoding='utf-8'))
+          for path, content in data.items():
+              d = os.path.dirname(path)
+              if d and d != '.': pathlib.Path(d).mkdir(parents=True, exist_ok=True)
+              pathlib.Path(path).write_text(content or '', encoding='utf-8')
+          PY
+
+      - name: Create update commit (if needed)
+        run: |
+          git config user.name  "blueprint-bot"
+          git config user.email "bot@example.com"
+          git checkout -b blueprint/sync || true
+          git add -A
+          if git diff --cached --quiet; then
+            echo "No changes."
+            exit 0
+          fi
+          git commit -m "chore(blueprint): sync generated files"
+          git push -u origin blueprint/sync || true
+
+      - name: Open/Update PR
+        uses: peter-evans/create-pull-request@v6
+        with:
+          branch: blueprint/sync
+          title: "chore(blueprint): sync generated files"
+          body: "This PR updates generated files from blueprint.cue."
+          commit-message: "chore(blueprint): sync generated files"
+          labels: maintenance
