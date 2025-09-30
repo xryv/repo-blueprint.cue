@@ -93,6 +93,7 @@ def render_ci_yaml(bp):
     lang = ci.get("language", "node")
     versions = ", ".join(ci.get("versions", []))
     oses = ", ".join(ci.get("os", []))
+
     s = []
     s += [
         "name: CI",
@@ -104,6 +105,9 @@ def render_ci_yaml(bp):
         "jobs:",
         "  build:",
         "    runs-on: ${{ matrix.os }}",
+        "    defaults:",
+        "      run:",
+        "        shell: bash",          # <— force bash even on windows-latest
         "    strategy:",
         "      matrix:",
         f"        os: [{oses}]",
@@ -111,12 +115,13 @@ def render_ci_yaml(bp):
         "    steps:",
         "      - uses: actions/checkout@v4",
         step_lang_setup(lang).rstrip(),
-        step_cache(wf.get("cache", True)).rstrip(),
-        step_lint(wf.get("lint", True)).rstrip(),
-        step_test(wf.get("test", True)).rstrip(),
+        step_cache(wf.get('cache', True)).rstrip(),
+        step_lint(wf.get('lint', True)).rstrip(),
+        step_test(wf.get('test', True)).rstrip(),
         ""
     ]
     return NL.join(s)
+
 
 def render_issue_bug(bp):
     issues = bp.get("issues", {})
