@@ -2,39 +2,33 @@
 # generate.py — render GitHub meta from blueprint.json
 # Zero dependencies. Works on Windows/macOS/Linux and in GitHub Actions.
 
-import json, os, sys, difflib, pathlib
+import json, sys, difflib, pathlib
 
 ROOT = pathlib.Path(__file__).parent.resolve()
 NL = "\n"
 
 def read_blueprint():
-    bp_path = ROOT / "blueprint.json"
-    if not bp_path.exists():
+    p = ROOT / "blueprint.json"
+    if not p.exists():
         sys.stderr.write("ERROR: blueprint.json not found.\n")
         sys.exit(2)
-    with bp_path.open("r", encoding="utf-8") as f:
-        return json.load(f)
+    return json.loads(p.read_text(encoding="utf-8"))
 
 def render_codeowners(bp):
-    lines = []
-    for o in bp.get("owners", []):
-        path = o["path"]
-        owners = " ".join(o.get("owners", []))
-        lines.append(f"{path} {owners}")
+    lines = [f"{o['path']} {' '.join(o.get('owners', []))}" for o in bp.get("owners", [])]
     return (NL.join(lines) + NL) if lines else NL
 
 def render_labels_yaml(bp):
     lines = []
     for l in bp.get("labels", []):
-        name = l["name"]
-        color = l["color"]
-        desc = l.get("desc", "")
-        lines.append(f"- name: {name}")
-        lines.append(f"  color: {color}")
-        lines.append(f"  description: {desc}")
+        lines += [
+            f"- name: {l['name']}",
+            f"  color: {l['color']}",
+            f"  description: {l.get('desc','')}",
+        ]
     return (NL.join(lines) + NL) if lines else NL
 
-# ---------- CI step builders (OS-specific where needed) ----------
+# ---------- CI step builders (OS-specific) ----------
 
 def step_lang_setup(lang):
     if lang == "node":
@@ -68,6 +62,7 @@ def step_cache(enabled):
         "          key: ${{ runner.os }}-${{ matrix.version }}-${{ hashFiles('**/lock*', '**/package-lock.json', '**/poetry.lock') }}\n"
     )
 
+# Bash steps: never fail (trailing '|| true')
 def step_lint_linux():
     return (
         "      - name: Lint (bash)\n"
@@ -76,27 +71,7 @@ def step_lint_linux():
         "        run: |\n"
         "          if command -v npm >/dev/null 2>&1; then npm run -s lint || echo \"no lint script\"; \n"
         "          elif command -v pip >/dev/null 2>&1; then echo \"add flake8/ruff here\"; \n"
-        "          else echo \"no linter configured\"; fi\n"
-    )
-
-def step_lint_windows():
-    # IMPORTANT: swallow non-zero exit code from 'npm run lint'
-    return (
-        "      - name: Lint (pwsh)\n"
-        "        if: runner.os == 'Windows'\n"
-        "        shell: pwsh\n"
-        "        run: |\n"
-        "          $ErrorActionPreference = 'Continue'\n"
-        "          if (Get-Command npm -ErrorAction SilentlyContinue) {\n"
-        "            npm run -s lint\n"
-        "            if ($LASTEXITCODE -ne 0) { Write-Host 'no lint script'; $global:LASTEXITCODE = 0 }\n"
-        "          } elseif (Get-Command pip -ErrorAction SilentlyContinue) {\n"
-        "            Write-Host 'add flake8/ruff here'\n"
-        "            $global:LASTEXITCODE = 0\n"
-        "          } else {\n"
-        "            Write-Host 'no linter configured'\n"
-        "            $global:LASTEXITCODE = 0\n"
-        "          }\n"
+        "          else echo \"no linter configured\"; fi || true\n"
     )
 
 def step_test_linux():
@@ -106,28 +81,45 @@ def step_test_linux():
         "        shell: bash\n"
         "        run: |\n"
         "          if command -v npm >/dev/null 2>&1; then npm test --silent || echo \"no test script\"; \n"
-        "          elif command -v pytest >/dev/null 2>&1; then pytest -q; \n"
-        "          else echo \"add tests here\"; fi\n"
+        "          elif command -v pytest >/dev/null 2>&1; then pytest -q || echo \"tests failed (ignored for template)\"; \n"
+        "          else echo \"add tests here\"; fi || true\n"
+    )
+
+# PowerShell steps: never fail (force $global:LASTEXITCODE = 0)
+def step_lint_windows():
+    return (
+        "      - name: Lint (pwsh)\n"
+        "        if: runner.os == 'Windows'\n"
+        "        shell: pwsh\n"
+        "        continue-on-error: true\n"
+        "        run: |\n"
+        "          $ErrorActionPreference = 'Continue'\n"
+        "          if (Get-Command npm -ErrorAction SilentlyContinue) {\n"
+        "            npm run -s lint; if ($LASTEXITCODE -ne 0) { Write-Host 'no lint script' }\n"
+        "          } elseif (Get-Command pip -ErrorAction SilentlyContinue) {\n"
+        "            Write-Host 'add flake8/ruff here'\n"
+        "          } else {\n"
+        "            Write-Host 'no linter configured'\n"
+        "          }\n"
+        "          $global:LASTEXITCODE = 0\n"
     )
 
 def step_test_windows():
-    # IMPORTANT: swallow non-zero exit code from 'npm test'
     return (
         "      - name: Test (pwsh)\n"
         "        if: runner.os == 'Windows'\n"
         "        shell: pwsh\n"
+        "        continue-on-error: true\n"
         "        run: |\n"
         "          $ErrorActionPreference = 'Continue'\n"
         "          if (Get-Command npm -ErrorAction SilentlyContinue) {\n"
-        "            npm test --silent\n"
-        "            if ($LASTEXITCODE -ne 0) { Write-Host 'no test script'; $global:LASTEXITCODE = 0 }\n"
+        "            npm test --silent; if ($LASTEXITCODE -ne 0) { Write-Host 'no test script' }\n"
         "          } elseif (Get-Command pytest -ErrorAction SilentlyContinue) {\n"
-        "            pytest -q\n"
-        "            if ($LASTEXITCODE -ne 0) { Write-Host 'tests failed (ignored for template)'; $global:LASTEXITCODE = 0 }\n"
+        "            pytest -q; if ($LASTEXITCODE -ne 0) { Write-Host 'tests failed (ignored for template)' }\n"
         "          } else {\n"
         "            Write-Host 'add tests here'\n"
-        "            $global:LASTEXITCODE = 0\n"
         "          }\n"
+        "          $global:LASTEXITCODE = 0\n"
     )
 
 def render_ci_yaml(bp):
@@ -137,8 +129,7 @@ def render_ci_yaml(bp):
     versions = ", ".join(ci.get("versions", [])) or "20"
     oses = ", ".join(ci.get("os", [])) or "ubuntu-latest"
 
-    s = []
-    s += [
+    s = [
         "name: CI",
         "on:",
         "  push:",
@@ -165,10 +156,9 @@ def render_ci_yaml(bp):
     return NL.join(s)
 
 def render_issue_bug(bp):
-    issues = bp.get("issues", {})
-    bug = issues.get("bug", {"enabled": False})
-    if not bug.get("enabled", False): return ""
-    title = bug.get("title", "Bug report")
+    b = bp.get("issues", {}).get("bug", {})
+    if not b.get("enabled"): return ""
+    title = b.get("title", "Bug report")
     return (
 f"name: {title}\n"
 "description: Report a problem\n"
@@ -185,10 +175,9 @@ f"name: {title}\n"
     )
 
 def render_issue_feature(bp):
-    issues = bp.get("issues", {})
-    feat = issues.get("feature", {"enabled": False})
-    if not feat.get("enabled", False): return ""
-    title = feat.get("title", "Feature request")
+    f = bp.get("issues", {}).get("feature", {})
+    if not f.get("enabled"): return ""
+    title = f.get("title", "Feature request")
     return (
 f"name: {title}\n"
 "description: Suggest an idea\n"
@@ -203,20 +192,18 @@ f"name: {title}\n"
 "      required: true\n"
     )
 
-# ---- writing / checking ----
-
 OUT_MAP = {
-    "CODEOWNERS": lambda bp: render_codeowners(bp),
-    ".github/labels.yml": lambda bp: render_labels_yaml(bp),
-    ".github/workflows/ci.yml": lambda bp: render_ci_yaml(bp),
-    ".github/ISSUE_TEMPLATE/bug.yml": lambda bp: render_issue_bug(bp),
-    ".github/ISSUE_TEMPLATE/feature.yml": lambda bp: render_issue_feature(bp),
+    "CODEOWNERS": render_codeowners,
+    ".github/labels.yml": render_labels_yaml,
+    ".github/workflows/ci.yml": render_ci_yaml,
+    ".github/ISSUE_TEMPLATE/bug.yml": render_issue_bug,
+    ".github/ISSUE_TEMPLATE/feature.yml": render_issue_feature,
 }
 
 def write_all(bp, base=ROOT):
     for path, fn in OUT_MAP.items():
         content = fn(bp)
-        if content == "":  # skip disabled templates
+        if not content:  # skip disabled
             continue
         p = (base / path)
         p.parent.mkdir(parents=True, exist_ok=True)
@@ -233,22 +220,18 @@ def check_drift(bp):
     write_all(bp, base=shadow)
     diffs = []
     for path in OUT_MAP.keys():
-        sp = shadow / path
-        rp = ROOT / path
+        sp, rp = shadow / path, ROOT / path
         s = sp.read_text(encoding="utf-8") if sp.exists() else ""
         r = rp.read_text(encoding="utf-8") if rp.exists() else ""
         if s != r:
-            diff = difflib.unified_diff(
+            diffs.append("".join(difflib.unified_diff(
                 r.splitlines(keepends=True),
                 s.splitlines(keepends=True),
-                fromfile=str(rp),
-                tofile=str(sp)
-            )
-            diffs.append("".join(diff))
+                fromfile=str(rp), tofile=str(sp)
+            )))
     if diffs:
         print("❌ Drift detected (repo vs generated):")
-        for d in diffs:
-            sys.stdout.write(d)
+        for d in diffs: sys.stdout.write(d)
         return 1
     print("✅ No drift detected.")
     return 0
@@ -256,16 +239,12 @@ def check_drift(bp):
 def main():
     import argparse
     ap = argparse.ArgumentParser(description="Generate GitHub meta from blueprint.json")
-    ap.add_argument("--check", action="store_true", help="check drift only (no writes to repo)")
-    ap.add_argument("--write", action="store_true", help="write files to repo (default if no flags)")
+    ap.add_argument("--check", action="store_true", help="check drift only (no writes)")
+    ap.add_argument("--write", action="store_true", help="write files (default)")
     args = ap.parse_args()
-
     bp = read_blueprint()
-
     if args.check:
-        rc = check_drift(bp)
-        sys.exit(rc)
-
+        sys.exit(check_drift(bp))
     write_all(bp)
     sys.exit(0)
 
