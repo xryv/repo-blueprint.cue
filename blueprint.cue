@@ -1,4 +1,4 @@
-// blueprint.cue — CI-safe version
+// blueprint.cue — stable version for CI
 
 package repo
 
@@ -20,11 +20,11 @@ Blueprint: {
     { path: "/web", owners: ["@org/frontend"] },
   ]
 
-  // NOTE: use `desc:` (not `desc?:`) when providing values.
+  // Keep values simple; no apostrophes or special punctuation in desc for now.
   labels: [
-    { name: "type:bug",         color: "d73a4a", desc: "Something isn't working" },
-    { name: "type:feature",     color: "a2eeef", desc: "New feature or request" },
-    { name: "prio:high",        color: "b60205", desc: "Needs attention soon" },
+    { name: "type:bug",         color: "d73a4a", desc: "Bug report" },
+    { name: "type:feature",     color: "a2eeef", desc: "Feature request" },
+    { name: "prio:high",        color: "b60205", desc: "High priority" },
     { name: "good first issue", color: "7057ff", desc: "Good for newcomers" },
   ]
 
@@ -49,12 +49,12 @@ Blueprint: {
 
 NL: string = "\n"
 
-// CODEOWNERS lines: "/path owner1 owner2"
+// CODEOWNERS: "/path owner1 owner2"
 codeownersLines: [ for o in Blueprint.owners {
   o.path + " " + strings.Join(o.owners, " ")
 }]
 
-// Labels YAML (desc is optional in schema, but at value-time we already provided it)
+// Labels YAML (desc is optional in schema; here we always set it)
 labelsLines: [
   for l in Blueprint.labels {
     "- name: " + l.name + NL +
@@ -88,7 +88,7 @@ featureTemplateYAML: if Blueprint.issues.feature.enabled {
   "    id: proposal" + NL +
   "    attributes:" + NL +
   "      label: Proposal" + NL +
-  "      placeholder: What's the feature and why?" + NL +
+  "      placeholder: What is the feature and why?" + NL +
   "    validations:" + NL +
   "      required: true" + NL
 }

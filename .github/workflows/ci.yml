@@ -32,12 +32,12 @@ jobs:
         run: |
           set -e
           python3 - << 'PY'
-          import json, os, pathlib
+          import json, pathlib
           data = json.load(open('files.json','r',encoding='utf-8'))
           for path, content in data.items():
-              shadow = pathlib.Path('.blueprint_shadow') / path
-              shadow.parent.mkdir(parents=True, exist_ok=True)
-              shadow.write_text(content or '', encoding='utf-8')
+              p = pathlib.Path('.blueprint_shadow') / path
+              p.parent.mkdir(parents=True, exist_ok=True)
+              p.write_text(content or '', encoding='utf-8')
           PY
           if ! diff -ru .blueprint_shadow . | grep -E "^(Only in \.blueprint_shadow|diff -ru \.blueprint_shadow)" -q; then
             echo "✅ No drift detected."
