@@ -50,9 +50,10 @@ def step_lang_setup(lang):
             "        with:\n"
             "          python-version: ${{ matrix.version }}\n"
         )
-    # default
+    # default (uses bash)
     return (
         "      - name: Setup language\n"
+        "        shell: bash\n"
         f"        run: echo \"Extend CI for language: {lang}\"\n"
     )
 
@@ -71,6 +72,7 @@ def step_lint(enabled):
     if not enabled: return ""
     return (
         "      - name: Lint\n"
+        "        shell: bash\n"
         "        run: |\n"
         "          if command -v npm >/dev/null 2>&1; then npm run -s lint || echo \"no lint script\"; \n"
         "          elif command -v pip >/dev/null 2>&1; then echo \"add flake8/ruff here\"; \n"
@@ -81,6 +83,7 @@ def step_test(enabled):
     if not enabled: return ""
     return (
         "      - name: Test\n"
+        "        shell: bash\n"
         "        run: |\n"
         "          if command -v npm >/dev/null 2>&1; then npm test --silent || echo \"no test script\"; \n"
         "          elif command -v pytest >/dev/null 2>&1; then pytest -q; \n"
