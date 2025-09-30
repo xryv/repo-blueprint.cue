@@ -16,11 +16,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
       - name: Generate files from blueprint.json
-        run: |
-          python3 generate.py --write
-
+        run: python3 generate.py --write
       - name: Commit & PR if changed
         uses: peter-evans/create-pull-request@v6
         with:

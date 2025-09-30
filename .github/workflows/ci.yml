@@ -23,13 +23,39 @@ jobs:
             node_modules
             ~/.cache/pip
           key: ${{ runner.os }}-${{ matrix.version }}-${{ hashFiles('**/lock*', '**/package-lock.json', '**/poetry.lock') }}
-      - name: Lint
+      - name: Lint (bash)
+        if: runner.os != 'Windows'
+        shell: bash
         run: |
           if command -v npm >/dev/null 2>&1; then npm run -s lint || echo "no lint script"; 
           elif command -v pip >/dev/null 2>&1; then echo "add flake8/ruff here"; 
           else echo "no linter configured"; fi
-      - name: Test
+      - name: Lint (pwsh)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          if (Get-Command npm -ErrorAction SilentlyContinue) {
+            npm run -s lint
+          } elseif (Get-Command pip -ErrorAction SilentlyContinue) {
+            echo 'add flake8/ruff here'
+          } else {
+            echo 'no linter configured'
+          }
+      - name: Test (bash)
+        if: runner.os != 'Windows'
+        shell: bash
         run: |
           if command -v npm >/dev/null 2>&1; then npm test --silent || echo "no test script"; 
           elif command -v pytest >/dev/null 2>&1; then pytest -q; 
           else echo "add tests here"; fi
+      - name: Test (pwsh)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          if (Get-Command npm -ErrorAction SilentlyContinue) {
+            npm test --silent
+          } elseif (Get-Command pytest -ErrorAction SilentlyContinue) {
+            pytest -q
+          } else {
+            echo 'add tests here'
+          }

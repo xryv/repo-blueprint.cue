@@ -24,7 +24,7 @@ def render_codeowners(bp):
     return (NL.join(lines) + NL) if lines else NL
 
 def render_labels_yaml(bp):
-    # small hand-rolled YAML (no external libs)
+    # minimal YAML rendering (hand-rolled)
     lines = []
     for l in bp.get("labels", []):
         name = l["name"]
@@ -34,6 +34,8 @@ def render_labels_yaml(bp):
         lines.append(f"  color: {color}")
         lines.append(f"  description: {desc}")
     return (NL.join(lines) + NL) if lines else NL
+
+# ---------- CI step builders (OS-specific where needed) ----------
 
 def step_lang_setup(lang):
     if lang == "node":
@@ -54,7 +56,7 @@ def step_lang_setup(lang):
     return (
         "      - name: Setup language\n"
         "        shell: bash\n"
-        f"        run: echo \"Extend CI for language: {lang}\"\n"
+        "        run: echo \"Extend CI for language: ${{ matrix.version }}\"\n"
     )
 
 def step_cache(enabled):
@@ -68,10 +70,10 @@ def step_cache(enabled):
         "          key: ${{ runner.os }}-${{ matrix.version }}-${{ hashFiles('**/lock*', '**/package-lock.json', '**/poetry.lock') }}\n"
     )
 
-def step_lint(enabled):
-    if not enabled: return ""
+def step_lint_linux():
     return (
-        "      - name: Lint\n"
+        "      - name: Lint (bash)\n"
+        "        if: runner.os != 'Windows'\n"
         "        shell: bash\n"
         "        run: |\n"
         "          if command -v npm >/dev/null 2>&1; then npm run -s lint || echo \"no lint script\"; \n"
@@ -79,10 +81,25 @@ def step_lint(enabled):
         "          else echo \"no linter configured\"; fi\n"
     )
 
-def step_test(enabled):
-    if not enabled: return ""
+def step_lint_windows():
     return (
-        "      - name: Test\n"
+        "      - name: Lint (pwsh)\n"
+        "        if: runner.os == 'Windows'\n"
+        "        shell: pwsh\n"
+        "        run: |\n"
+        "          if (Get-Command npm -ErrorAction SilentlyContinue) {\n"
+        "            npm run -s lint\n"
+        "          } elseif (Get-Command pip -ErrorAction SilentlyContinue) {\n"
+        "            echo 'add flake8/ruff here'\n"
+        "          } else {\n"
+        "            echo 'no linter configured'\n"
+        "          }\n"
+    )
+
+def step_test_linux():
+    return (
+        "      - name: Test (bash)\n"
+        "        if: runner.os != 'Windows'\n"
         "        shell: bash\n"
         "        run: |\n"
         "          if command -v npm >/dev/null 2>&1; then npm test --silent || echo \"no test script\"; \n"
@@ -90,12 +107,27 @@ def step_test(enabled):
         "          else echo \"add tests here\"; fi\n"
     )
 
+def step_test_windows():
+    return (
+        "      - name: Test (pwsh)\n"
+        "        if: runner.os == 'Windows'\n"
+        "        shell: pwsh\n"
+        "        run: |\n"
+        "          if (Get-Command npm -ErrorAction SilentlyContinue) {\n"
+        "            npm test --silent\n"
+        "          } elseif (Get-Command pytest -ErrorAction SilentlyContinue) {\n"
+        "            pytest -q\n"
+        "          } else {\n"
+        "            echo 'add tests here'\n"
+        "          }\n"
+    )
+
 def render_ci_yaml(bp):
     wf = bp.get("workflow", {})
     ci = wf.get("ci", {})
     lang = ci.get("language", "node")
-    versions = ", ".join(ci.get("versions", []))
-    oses = ", ".join(ci.get("os", []))
+    versions = ", ".join(ci.get("versions", [])) or "20"
+    oses = ", ".join(ci.get("os", [])) or "ubuntu-latest"
 
     s = []
     s += [
@@ -108,9 +140,6 @@ def render_ci_yaml(bp):
         "jobs:",
         "  build:",
         "    runs-on: ${{ matrix.os }}",
-        "    defaults:",
-        "      run:",
-        "        shell: bash",          # <— force bash even on windows-latest
         "    strategy:",
         "      matrix:",
         f"        os: [{oses}]",
@@ -119,12 +148,13 @@ def render_ci_yaml(bp):
         "      - uses: actions/checkout@v4",
         step_lang_setup(lang).rstrip(),
         step_cache(wf.get('cache', True)).rstrip(),
-        step_lint(wf.get('lint', True)).rstrip(),
-        step_test(wf.get('test', True)).rstrip(),
+        step_lint_linux().rstrip(),
+        step_lint_windows().rstrip(),
+        step_test_linux().rstrip(),
+        step_test_windows().rstrip(),
         ""
     ]
     return NL.join(s)
-
 
 def render_issue_bug(bp):
     issues = bp.get("issues", {})
@@ -186,7 +216,6 @@ def write_all(bp, base=ROOT):
         print(f"wrote {p.relative_to(ROOT)}")
 
 def check_drift(bp):
-    # write to shadow then compare to repo
     shadow = ROOT / ".blueprint_shadow"
     if shadow.exists():
         for item in shadow.glob("**/*"):
@@ -194,7 +223,6 @@ def check_drift(bp):
                 item.unlink()
     shadow.mkdir(exist_ok=True)
     write_all(bp, base=shadow)
-    # gather diffs
     diffs = []
     for path in OUT_MAP.keys():
         sp = shadow / path
@@ -209,8 +237,6 @@ def check_drift(bp):
                 tofile=str(sp)
             )
             diffs.append("".join(diff))
-    # also check for repo files that shouldn't exist (when generator outputs empty)
-    # (skipped in this simple model)
     if diffs:
         print("❌ Drift detected (repo vs generated):")
         for d in diffs:
