@@ -11,12 +11,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # Install CUE (requires Go >= 1.24)
-      - name: Install Go
+      - name: Install Go (1.24.x)
         uses: actions/setup-go@v5
         with:
           go-version: '1.24.x'
-          cache: false   # avoid go.sum cache warning
+          cache: false
 
       - name: Install CUE
         run: |
@@ -40,7 +39,6 @@ jobs:
               shadow.parent.mkdir(parents=True, exist_ok=True)
               shadow.write_text(content or '', encoding='utf-8')
           PY
-          # Fail if differences exist between generated shadow and repo
           if ! diff -ru .blueprint_shadow . | grep -E "^(Only in \.blueprint_shadow|diff -ru \.blueprint_shadow)" -q; then
             echo "✅ No drift detected."
           else

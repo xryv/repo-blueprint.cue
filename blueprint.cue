@@ -1,4 +1,4 @@
-// blueprint.cue — CI-safe version (no inline ifs in strings; no list concat)
+// blueprint.cue — CI-safe version
 
 package repo
 
@@ -15,16 +15,17 @@ Blueprint: {
   }
 
   owners: [
-    { path: "/",     owners: ["@org/platform", "@your-user"] },
-    { path: "/api",  owners: ["@org/backend"] },
-    { path: "/web",  owners: ["@org/frontend"] },
+    { path: "/",    owners: ["@org/platform", "@your-user"] },
+    { path: "/api", owners: ["@org/backend"] },
+    { path: "/web", owners: ["@org/frontend"] },
   ]
 
+  // NOTE: use `desc:` (not `desc?:`) when providing values.
   labels: [
-    { name: "type:bug",          color: "d73a4a", desc?: "Something isn't working" },
-    { name: "type:feature",      color: "a2eeef", desc?: "New feature or request" },
-    { name: "prio:high",         color: "b60205", desc?: "Needs attention soon" },
-    { name: "good first issue",  color: "7057ff", desc?: "Good for newcomers" },
+    { name: "type:bug",         color: "d73a4a", desc: "Something isn't working" },
+    { name: "type:feature",     color: "a2eeef", desc: "New feature or request" },
+    { name: "prio:high",        color: "b60205", desc: "Needs attention soon" },
+    { name: "good first issue", color: "7057ff", desc: "Good for newcomers" },
   ]
 
   workflow: {
@@ -53,7 +54,7 @@ codeownersLines: [ for o in Blueprint.owners {
   o.path + " " + strings.Join(o.owners, " ")
 }]
 
-// Labels YAML (use disjunction for optional desc)
+// Labels YAML (desc is optional in schema, but at value-time we already provided it)
 labelsLines: [
   for l in Blueprint.labels {
     "- name: " + l.name + NL +
@@ -62,7 +63,7 @@ labelsLines: [
   }
 ]
 
-// Issue templates (plain concatenations)
+// Issue templates
 bugTemplateYAML: if Blueprint.issues.bug.enabled {
   "name: " + Blueprint.issues.bug.title + NL +
   "description: Report a problem" + NL +
@@ -92,7 +93,7 @@ featureTemplateYAML: if Blueprint.issues.feature.enabled {
   "      required: true" + NL
 }
 
-// Dynamic language setup block
+// Language setup block
 langSetupStep: string = {
   if Blueprint.workflow.ci.language == "node" {
     "        - name: Setup Node" + NL +
@@ -110,7 +111,7 @@ langSetupStep: string = {
   }
 }
 
-// Optional steps (empty string when disabled)
+// Optional steps
 cacheStep: string = if Blueprint.workflow.cache {
   "        - uses: actions/cache@v4" + NL +
   "          with:" + NL +
@@ -162,9 +163,9 @@ ciYAML: strings.Join(baseCILines, NL) + NL +
 // ---- Rendered outputs for generate.cue ----
 
 Rendered: {
-  CODEOWNERS:   strings.Join(codeownersLines, NL) + NL
-  LabelsYAML:   strings.Join(labelsLines, NL) + NL
-  BugTemplate:  bugTemplateYAML
-  FeatureTemplate: featureTemplateYAML
-  CIYml:        ciYAML + NL
+  CODEOWNERS:       strings.Join(codeownersLines, NL) + NL
+  LabelsYAML:       strings.Join(labelsLines, NL) + NL
+  BugTemplate:      bugTemplateYAML
+  FeatureTemplate:  featureTemplateYAML
+  CIYml:            ciYAML + NL
 }
