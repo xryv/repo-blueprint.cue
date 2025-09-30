@@ -1,0 +1,12 @@
+- name: type:bug
+  color: d73a4a
+  description: Bug report
+- name: type:feature
+  color: a2eeef
+  description: Feature request
+- name: prio:high
+  color: b60205
+  description: High priority
+- name: good first issue
+  color: 7057ff
+  description: Good for newcomers

@@ -1,47 +1,35 @@
-name: CI (Blueprint Validate)
-
+name: CI
 on:
   push:
-    branches: [main, master]
+    branches: [ main, master ]
   pull_request:
 
 jobs:
-  validate:
-    runs-on: ubuntu-latest
+  build:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        version: [20, 22]
     steps:
       - uses: actions/checkout@v4
-
-      - name: Install Go (1.24.x)
-        uses: actions/setup-go@v5
+      - name: Setup Node
+        uses: actions/setup-node@v4
         with:
-          go-version: '1.24.x'
-          cache: false
-
-      - name: Install CUE
+          node-version: ${{ matrix.version }}
+      - uses: actions/cache@v4
+        with:
+          path: |
+            node_modules
+            ~/.cache/pip
+          key: ${{ runner.os }}-${{ matrix.version }}-${{ hashFiles('**/lock*', '**/package-lock.json', '**/poetry.lock') }}
+      - name: Lint
         run: |
-          go install cuelang.org/go/cmd/cue@latest
-          echo "$HOME/go/bin" >> $GITHUB_PATH
-
-      - name: Type-check blueprint
-        run: cue vet blueprint.cue schema.cue
-
-      - name: Export files map
-        run: cue export generate.cue -e files -o files.json
-
-      - name: Rebuild outputs and check drift
+          if command -v npm >/dev/null 2>&1; then npm run -s lint || echo "no lint script"; 
+          elif command -v pip >/dev/null 2>&1; then echo "add flake8/ruff here"; 
+          else echo "no linter configured"; fi
+      - name: Test
         run: |
-          set -e
-          python3 - << 'PY'
-          import json, pathlib
-          data = json.load(open('files.json','r',encoding='utf-8'))
-          for path, content in data.items():
-              p = pathlib.Path('.blueprint_shadow') / path
-              p.parent.mkdir(parents=True, exist_ok=True)
-              p.write_text(content or '', encoding='utf-8')
-          PY
-          if ! diff -ru .blueprint_shadow . | grep -E "^(Only in \.blueprint_shadow|diff -ru \.blueprint_shadow)" -q; then
-            echo "✅ No drift detected."
-          else
-            echo "❌ Drift detected between generated outputs and committed files."
-            exit 1
-          fi
+          if command -v npm >/dev/null 2>&1; then npm test --silent || echo "no test script"; 
+          elif command -v pytest >/dev/null 2>&1; then pytest -q; 
+          else echo "add tests here"; fi

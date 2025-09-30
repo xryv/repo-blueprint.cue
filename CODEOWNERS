@@ -1,0 +1,3 @@
+/ @org/platform @your-user
+/api @org/backend
+/web @org/frontend

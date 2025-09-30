@@ -1,0 +1,33 @@
+{
+  "repo": {
+    "name": "awesome-repo",
+    "description": "Single-source-of-truth for GitHub meta via JSON",
+    "visibility": "public",
+    "license": "MIT"
+  },
+  "owners": [
+    { "path": "/",   "owners": ["@org/platform", "@your-user"] },
+    { "path": "/api","owners": ["@org/backend"] },
+    { "path": "/web","owners": ["@org/frontend"] }
+  ],
+  "labels": [
+    { "name": "type:bug",         "color": "d73a4a", "desc": "Bug report" },
+    { "name": "type:feature",     "color": "a2eeef", "desc": "Feature request" },
+    { "name": "prio:high",        "color": "b60205", "desc": "High priority" },
+    { "name": "good first issue", "color": "7057ff", "desc": "Good for newcomers" }
+  ],
+  "workflow": {
+    "ci": {
+      "language": "node",
+      "versions": ["20", "22"],
+      "os": ["ubuntu-latest", "windows-latest"]
+    },
+    "cache": true,
+    "lint": true,
+    "test": true
+  },
+  "issues": {
+    "bug":     { "enabled": true, "title": "Bug report" },
+    "feature": { "enabled": true, "title": "Feature request" }
+  }
+}
